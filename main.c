@@ -5,8 +5,8 @@
 #include <time.h>
 
 #define max_lineLength 100
-#define max_usernameLength 50
-#define max_passwordLength 50
+#define max_usernameLength 100
+#define max_passwordLength 100
 #define dailyLimit 50000.0
 
 typedef struct
@@ -27,11 +27,13 @@ typedef struct
     Date date_opened;
     char status[10];
     char transactions[100][100];
+    int num_of_transactions;
 } Account;
 
 int num_of_accounts = 0, change = 0;
 Account acc[100], temp[100];
 
+int validateOverflow(char *input);
 int Unique_Email(char *email);
 int validateBalance(char *balance);
 int validateTransaction(char *amount);
@@ -53,7 +55,7 @@ void MENU();
 void returnToMenu();
 void GO_TO_MENU();
 
-void PRINT(Account a);
+void PRINT_Unsorted();
 int LOGIN();
 int LOAD();
 void LOAD_REPORTS();
@@ -171,12 +173,16 @@ void MENU()
 void GO_TO_MENU()
 {
     char input[100];
-
     do
     {
         printf("Enter '-1' to return to menu: ");
-
-        if (fgets(input, sizeof(input), stdin) == NULL)
+        fgets(input, sizeof(input), stdin);
+        input[strcspn(input, "\n")] = '\0';
+        if (!validateOverflow(input))
+        {
+            continue;
+        }
+        if (input == NULL)
         {
             printf("Error reading input.\n");
             continue;
@@ -195,6 +201,18 @@ void returnToMenu()
     MENU();
 }
 
+int validateOverflow(char *input)
+{
+    if (strlen(input) == 100 - 1 && input[100 - 2] != '\n')
+    {
+        int c;
+        while ((c = getchar()) != '\n' && c != EOF)
+            ;
+        printf("Error: Input too long.\n");
+        return 0;
+    }
+    return 1;
+}
 int validateYearChoice(char *choice)
 {
     if (choice == NULL || strlen(choice) == 0)
@@ -603,10 +621,14 @@ int validateNegativeOne(char *input)
 }
 int validateYesNo()
 {
-    char answer[10];
+    char answer[100];
     int i;
     fgets(answer, sizeof(answer), stdin);
     answer[strcspn(answer, "\n")] = '\0';
+    if (!validateOverflow(answer))
+    {
+        return -1;
+    }
     for (i = 0; i < strlen(answer); i++)
         answer[i] = tolower(answer[i]);
     if (!strcmp(answer, "yes"))
@@ -799,9 +821,9 @@ int validateSortChoice(char *input)
         }
     }
     int c = atoi(input);
-    if (c < 1 || c > 4)
+    if (c < 1 || c > 5)
     {
-        printf("Error: Input is outside the range (1-4).\n");
+        printf("Error: Input is outside the range (1-5).\n");
         return 0;
     }
     return 1;
@@ -849,16 +871,6 @@ void num_to_month(Account a)
     }
 }
 
-void PRINT(Account a)
-{
-    printf("Account number: %s\n", a.number);
-    printf("Name: %s\n", a.name);
-    printf("E-mail: %s\n", a.email);
-    printf("Balance: %lf\n", a.balance);
-    printf("Mobile: %s\n", a.mobile);
-    num_to_month(a);
-    printf("Status: %s\n", a.status);
-}
 int LOGIN()
 {
     while (1)
@@ -868,6 +880,8 @@ int LOGIN()
         printf("Enter 1 to login or 0 to exit: ");
         fgets(n, sizeof(n), stdin);
         n[strcspn(n, "\n")] = '\0';
+        if (!validateOverflow(n))
+            continue;
         if (!validateLogin(n))
             continue;
         if (atoi(n))
@@ -967,6 +981,10 @@ int LOAD()
 
         num_of_accounts++;
     }
+    for (int i = 0; i < num_of_accounts; i++)
+    {
+        temp[i] = acc[i];
+    }
     fclose(f);
     return num_of_accounts;
 }
@@ -974,8 +992,27 @@ void LOAD_REPORTS()
 {
     int i, j, num_of_transactions = 0;
     char line[max_lineLength];
+
     for (i = 0; i < num_of_accounts; i++)
     {
+        FILE *f = fopen(acc[i].number, "r");
+        if (f == NULL)
+        {
+            FILE *new_file = fopen(acc[i].number, "w");
+            if (new_file != NULL)
+            {
+                fprintf(new_file, "=== Transaction History for %s ===\n", acc[i].number);
+                fclose(new_file);
+            }
+        }
+        else
+        {
+            fclose(f);
+        }
+    }
+    for (i = 0; i < num_of_accounts; i++)
+    {
+        num_of_transactions = 0;
         FILE *f = fopen(acc[i].number, "r");
         if (f != NULL)
         {
@@ -990,16 +1027,9 @@ void LOAD_REPORTS()
                     num_of_transactions++;
                 }
             }
+            fclose(f);
         }
-        else
-        {
-            FILE *f = fopen(acc[i].number, "w");
-            if (f != NULL)
-            {
-                fprintf(f, "=== Transaction History for %s ===\n", acc[i].number);
-                fclose(f);
-            }
-        }
+        acc[i].num_of_transactions = num_of_transactions;
     }
 }
 void REVOKE_REPORTS()
@@ -1010,10 +1040,11 @@ void REVOKE_REPORTS()
         FILE *f = fopen(acc[i].number, "w");
         if (f != NULL)
         {
-            for (j = 0; j < max_lineLength; j++)
+            for (j = 0; j < acc[i].num_of_transactions; j++)
             {
-                fprintf("%s\n", acc[i].transactions[j]);
+                fprintf(f, "%s\n", acc[i].transactions[j]);
             }
+            fclose(f);
         }
         else
         {
@@ -1021,15 +1052,28 @@ void REVOKE_REPORTS()
             exit(1);
         }
     }
+    for (; i < 100; i++)
+    {
+        if (acc[i].number[0] != '\0')
+        {
+            if (remove(acc[i].number) == 0)
+            {
+                acc[i].number[0] = '\0';
+            }
+        }
+    }
 }
 void QUERY_SEARCH()
 {
-    char search[20];
+    char search[100];
     do
     {
         printf("Enter account number to search for account (-1 to return to menu): ");
         fgets(search, sizeof(search), stdin);
         search[strcspn(search, "\n")] = '\0';
+
+        if (!validateOverflow(search))
+            continue;
 
         if (!strcmp(search, "-1"))
         {
@@ -1069,7 +1113,7 @@ void QUERY_SEARCH()
 }
 void ADVANCED_SEARCH()
 {
-    char keyword[50];
+    char keyword[100];
     printf("\n=== ADVANCED SEARCH ===\n");
     do
     {
@@ -1077,6 +1121,10 @@ void ADVANCED_SEARCH()
         fgets(keyword, sizeof(keyword), stdin);
         keyword[strcspn(keyword, "\n")] = '\0';
 
+        if (!validateOverflow(keyword))
+        {
+            continue;
+        }
         if (!strcmp(keyword, "-1"))
         {
             returnToMenu();
@@ -1113,7 +1161,7 @@ void ADVANCED_SEARCH()
             printf("\nAccount Number: %s\n", acc[i].number);
             printf("Name: %s\n", acc[i].name);
             printf("E-mail: %s\n", acc[i].email);
-            printf("Balance: %lf $\n", acc[i].balance);
+            printf("Balance: $%.2lf\n", acc[i].balance);
             printf("Mobile: %s\n", acc[i].mobile);
             printf("Date opened: %d-%d\n", acc[i].date_opened.month, acc[i].date_opened.year);
             printf("Status: %s\n", acc[i].status);
@@ -1146,6 +1194,8 @@ void ADD()
     if (num_of_accounts >= 100)
     {
         printf("Error: Maximum account limit reached, can not add an account to the system.\n");
+        returnToMenu();
+        return;
     }
     Account new;
     printf("\n_-=========== ADD NEW ACCOUNT ===========-_\n");
@@ -1156,6 +1206,10 @@ void ADD()
         printf("Enter account number (10 digits) (-1 to return to menu): ");
         fgets(input, sizeof(input), stdin);
         input[strcspn(input, "\n")] = '\0';
+        if (!validateOverflow(input))
+        {
+            continue;
+        }
         if (!strcmp(input, "-1"))
         {
             returnToMenu();
@@ -1178,6 +1232,10 @@ void ADD()
         printf("Enter account name (-1 to return to menu): ");
         fgets(input, sizeof(input), stdin);
         input[strcspn(input, "\n")] = '\0';
+        if (!validateOverflow(input))
+        {
+            continue;
+        }
         if (!strcmp(input, "-1"))
         {
             returnToMenu();
@@ -1195,6 +1253,10 @@ void ADD()
         printf("Enter E-mail (-1 to return to menu): ");
         fgets(input, sizeof(input), stdin);
         input[strcspn(input, "\n")] = '\0';
+        if (!validateOverflow(input))
+        {
+            continue;
+        }
         if (!strcmp(input, "-1"))
         {
             returnToMenu();
@@ -1212,6 +1274,10 @@ void ADD()
         printf("Enter initial account balance($) (-1 to return to menu): ");
         fgets(input, sizeof(input), stdin);
         input[strcspn(input, "\n")] = '\0';
+        if (!validateOverflow(input))
+        {
+            continue;
+        }
         if (!strcmp(input, "-1"))
         {
             returnToMenu();
@@ -1229,6 +1295,10 @@ void ADD()
         printf("Enter mobile number (-1 to return to menu): ");
         fgets(input, sizeof(input), stdin);
         input[strcspn(input, "\n")] = '\0';
+        if (!validateOverflow(input))
+        {
+            continue;
+        }
         if (!strcmp(input, "-1"))
         {
             returnToMenu();
@@ -1245,7 +1315,7 @@ void ADD()
     struct tm *tm_info = localtime(&t);
     new.date_opened.month = tm_info->tm_mon + 1;
     new.date_opened.year = tm_info->tm_year + 1900;
-    strcpy(new.status, "active");
+    strcpy(new.status, " active");
 
     printf("\n========= ACCOUNT SUMMARY =========\n");
     printf("Account Number: %10s\n", new.number);
@@ -1273,14 +1343,21 @@ void ADD()
             continue;
     } while (1);
     acc[num_of_accounts] = new;
+    temp[num_of_accounts] = new;
     num_of_accounts++;
     change = 1;
     printf("\nAccount created successfully!\n");
+    FILE *f = fopen(acc[num_of_accounts - 1].number, "w");
+    if (f != NULL)
+    {
+        fprintf(f, "=== Transaction History for %s ===\n", acc[num_of_accounts - 1].number);
+    }
+    fclose(f);
     GO_TO_MENU();
 }
 void DELETE()
 {
-    char account_number[20];
+    char account_number[100];
     int i, n, delete_index = -1;
 
     do
@@ -1288,6 +1365,10 @@ void DELETE()
         printf("Enter the account number to delete (-1 to go back to menu): ");
         fgets(account_number, sizeof(account_number), stdin);
         account_number[strcspn(account_number, "\n")] = '\0';
+        if (!validateOverflow(account_number))
+        {
+            continue;
+        }
 
         if (!strcmp(account_number, "-1"))
         {
@@ -1337,6 +1418,7 @@ void DELETE()
                 num_of_accounts--;
                 change = 1;
                 printf("Account deletion is successful!\n");
+                remove(account_number);
                 GO_TO_MENU();
                 return;
             }
@@ -1353,19 +1435,22 @@ void DELETE()
 }
 void MODIFY()
 {
-    char account_number[20];
     char input[100];
     do
     {
         printf("Enter the account number (-1 to go back to menu):");
-        fgets(account_number, sizeof(account_number), stdin);
-        account_number[strcspn(account_number, "\n")] = '\0';
-        if (!strcmp(account_number, "-1"))
+        fgets(input, sizeof(input), stdin);
+        input[strcspn(input, "\n")] = '\0';
+        if (!validateOverflow(input))
+        {
+            continue;
+        }
+        if (!strcmp(input, "-1"))
         {
             returnToMenu();
             return;
         }
-        if (!validateACC_NUM(account_number))
+        if (!validateACC_NUM(input))
         {
             continue;
         }
@@ -1375,7 +1460,7 @@ void MODIFY()
     int i, check = 0, n;
     for (i = 0; i < num_of_accounts; i++)
     {
-        if (!strcmp(account_number, acc[i].number))
+        if (!strcmp(input, acc[i].number))
         {
             check = 1;
             break;
@@ -1394,6 +1479,10 @@ void MODIFY()
         printf("Enter the new name (Enter -1 to keep original): ");
         fgets(input, sizeof(input), stdin);
         input[strcspn(input, "\n")] = '\0';
+        if (!validateOverflow(input))
+        {
+            continue;
+        }
         if (!strcmp(input, "-1"))
             break;
         if (!validateName(input))
@@ -1408,6 +1497,10 @@ void MODIFY()
         printf("Enter the new mobile number (Enter -1 to keep original): ");
         fgets(input, sizeof(input), stdin);
         input[strcspn(input, "\n")] = '\0';
+        if (!validateOverflow(input))
+        {
+            continue;
+        }
         if (!strcmp(input, "-1"))
             break;
         if (!validateMobile(input))
@@ -1422,6 +1515,10 @@ void MODIFY()
         printf("Enter the new email address (Enter -1 to keep original): ");
         fgets(input, sizeof(input), stdin);
         input[strcspn(input, "\n")] = '\0';
+        if (!validateOverflow(input))
+        {
+            continue;
+        }
         if (!strcmp(input, "-1"))
             break;
         if (!validateEmail(input))
@@ -1438,7 +1535,7 @@ void MODIFY()
 void CHANGE_STATUS()
 {
     int i, x, found = 0;
-    char search[20];
+    char search[100];
     while (1)
     {
         do
@@ -1446,12 +1543,21 @@ void CHANGE_STATUS()
             printf("Enter the account number (-1 to return to menu): ");
             fgets(search, sizeof(search), stdin);
             search[strcspn(search, "\n")] = '\0';
+            if (!validateOverflow(search))
+            {
+                continue;
+            }
             if (atoi(search) == -1)
             {
                 returnToMenu();
                 return;
             }
-        } while (!validateACC_NUM(search));
+            if (!validateACC_NUM(search))
+            {
+                continue;
+            }
+            break;
+        } while (1);
 
         for (i = 0; i < num_of_accounts; i++)
         {
@@ -1510,7 +1616,7 @@ int canWithdraw(Account *acc, double amountToWithdraw)
 void WITHDRAW()
 {
     int i, n, found = 0, inactive = 0;
-    char search[20], amountS[100];
+    char search[100], amountS[100];
     double amount;
     while (1)
     {
@@ -1519,12 +1625,21 @@ void WITHDRAW()
             printf("Enter the account number (-1 to return to menu): ");
             fgets(search, sizeof(search), stdin);
             search[strcspn(search, "\n")] = '\0';
+            if (!validateOverflow(search))
+            {
+                continue;
+            }
             if (atoi(search) == -1)
             {
                 returnToMenu();
                 return;
             }
-        } while (!validateACC_NUM(search));
+            if (!validateACC_NUM)
+            {
+                continue;
+            }
+            break;
+        } while (1);
         for (i = 0; i < num_of_accounts; i++)
         {
             if (!strcmp(search, acc[i].number))
@@ -1553,6 +1668,10 @@ void WITHDRAW()
                 printf("Enter the amount needed to be withdrew (Maximum Limit: $10,000) (-1 to return to menu): ");
                 fgets(amountS, sizeof(amountS), stdin);
                 amountS[strcspn(amountS, "\n")] = '\0';
+                if (!validateOverflow(amountS))
+                {
+                    continue;
+                }
                 if (atoi(amountS) == -1)
                 {
                     returnToMenu();
@@ -1582,7 +1701,8 @@ void WITHDRAW()
             FILE *f = fopen(search, "a");
             if (f)
             {
-                fprintf(f, "Withdrew: $%s\n", amountS);
+                fseek(f, 33, SEEK_SET);
+                fprintf(f, "\nWithdrew: $%s", amountS);
                 fclose(f);
             }
             printf("Withdrawing $%s from your account...\n", amountS);
@@ -1599,7 +1719,7 @@ void WITHDRAW()
 void DEPOSIT()
 {
     int i, n, found = 0, inactive = 0;
-    char search[20], amount[100];
+    char search[100], amount[100];
     while (1)
     {
         do
@@ -1607,12 +1727,21 @@ void DEPOSIT()
             printf("Enter the account number (-1 to return to menu): ");
             fgets(search, sizeof(search), stdin);
             search[strcspn(search, "\n")] = '\0';
+            if (!validateOverflow(search))
+            {
+                continue;
+            }
             if (atoi(search) == -1)
             {
                 returnToMenu();
                 return;
             }
-        } while (!validateACC_NUM(search));
+            if (!validateACC_NUM(search))
+            {
+                continue;
+            }
+            break;
+        } while (1);
         for (i = 0; i < num_of_accounts; i++)
         {
             if (!strcmp(search, acc[i].number))
@@ -1636,6 +1765,10 @@ void DEPOSIT()
             printf("Enter the amount needed to be deposited (Maximum Limit: $10,000) (-1 to return to menu): ");
             fgets(amount, sizeof(amount), stdin);
             amount[strcspn(amount, "\n")] = '\0';
+            if (!validateOverflow(amount))
+            {
+                continue;
+            }
             if (atoi(amount) == -1)
             {
                 returnToMenu();
@@ -1655,7 +1788,8 @@ void DEPOSIT()
             FILE *f = fopen(search, "a");
             if (f)
             {
-                fprintf(f, "Deposited: $%s\n", amount);
+                fseek(f, 33, SEEK_SET);
+                fprintf(f, "\nDeposited: $%s", amount);
                 fclose(f);
             }
             printf("Depositing $%s into your account...\n", amount);
@@ -1673,7 +1807,7 @@ void TRANSFER()
 {
     int i, j, n, foundSender = 0, foundReceiver = 0;
     double amount;
-    char sender[20], receiver[20], amountS[100];
+    char sender[100], receiver[100], amountS[100];
     while (1)
     {
         do
@@ -1681,12 +1815,21 @@ void TRANSFER()
             printf("Enter the sender account number (-1 to return to menu): ");
             fgets(sender, sizeof(sender), stdin);
             sender[strcspn(sender, "\n")] = '\0';
+            if (!validateOverflow(sender))
+            {
+                continue;
+            }
             if (atoi(sender) == -1)
             {
                 returnToMenu();
                 return;
             }
-        } while (!validateACC_NUM(sender));
+            if (!validateACC_NUM(sender))
+            {
+                continue;
+            }
+            break;
+        } while (1);
         for (i = 0; i < num_of_accounts; i++)
         {
             if (!strcmp(sender, acc[i].number))
@@ -1714,12 +1857,21 @@ void TRANSFER()
             printf("Enter the receiver account number (-1 to return to menu): ");
             fgets(receiver, sizeof(receiver), stdin);
             receiver[strcspn(receiver, "\n")] = '\0';
+            if (!validateOverflow(receiver))
+            {
+                continue;
+            }
             if (atoi(receiver) == -1)
             {
                 returnToMenu();
                 return;
             }
-        } while (!validateACC_NUM(receiver));
+            if (!validateACC_NUM(receiver))
+            {
+                continue;
+            }
+            break;
+        } while (1);
         for (j = 0; j < num_of_accounts; j++)
         {
             if (!strcmp(receiver, acc[j].number))
@@ -1748,6 +1900,10 @@ void TRANSFER()
         printf("Enter the amount needed to be transferred (-1 to return to menu): ");
         fgets(amountS, sizeof(amountS), stdin);
         amountS[strcspn(amountS, "\n")] = '\0';
+        if (!validateOverflow(amountS))
+        {
+            continue;
+        }
         if (atoi(amountS) == -1)
         {
             returnToMenu();
@@ -1769,13 +1925,15 @@ void TRANSFER()
         FILE *f = fopen(sender, "a");
         if (f)
         {
-            fprintf(f, "Transferred to %s: -$%s\n", receiver, amountS);
+            fseek(f, 33, SEEK_SET);
+            fprintf(f, "\nTransferred to %s: -$%s", receiver, amountS);
             fclose(f);
         }
-        FILE *f = fopen(receiver, "a");
+        f = fopen(receiver, "a");
         if (f)
         {
-            fprintf(f, "Transferred from %s: +$%s\n", sender, amountS);
+            fseek(f, 33, SEEK_SET);
+            fprintf(f, "\nTransferred from %s: +$%s", sender, amountS);
             fclose(f);
         }
         printf("Transferring $%s to the receiver (Account Number: %s)...\n", amountS, receiver);
@@ -1790,56 +1948,62 @@ void TRANSFER()
 }
 void REPORT()
 {
-}
-void sortByDate()
-{
-    int i, j;
-    Account t;
-
-    for (i = 0; i < num_of_accounts - 1; i++)
+    int i, found = 0;
+    char search[100], output[100];
+    while (1)
     {
-        for (j = 0; j < num_of_accounts - i - 1; j++)
+        while (1)
         {
-            if (acc[j].date_opened.year > acc[j + 1].date_opened.year)
+            printf("Enter the account number (-1 to return to menu): ");
+            fgets(search, sizeof(search), stdin);
+            search[strcspn(search, "\n")] = '\0';
+            if (!validateOverflow(search))
             {
-                t = acc[j];
-                acc[j] = acc[j + 1];
-                acc[j + 1] = t;
+                continue;
             }
-            else if (acc[j].date_opened.year == acc[j + 1].date_opened.year)
+            if (atoi(search) == -1)
             {
-                if (acc[j].date_opened.month > acc[j + 1].date_opened.month)
-                {
-                    t = acc[j];
-                    acc[j] = acc[j + 1];
-                    acc[j + 1] = t;
-                }
+                returnToMenu();
+                return;
+            }
+            if (!validateACC_NUM)
+            {
+                continue;
+            }
+            break;
+        }
+        for (i = 0; i < num_of_accounts; i++)
+        {
+            if (!strcmp(search, acc[i].number))
+            {
+                found = 1;
+                break;
             }
         }
+        if (!found)
+        {
+            printf("Account number %s not found.\n", search);
+            continue;
+        }
+        break;
     }
-    printf("\nAccounts sorted by date opened (Oldest to Newest):-\n");
-    printf("\n%-5s %-15s %-18s %-25s %-12s %-12s %-12s %-10s\n",
-           "No.", "Account No.", "Name", "Email", "Mobile", "Balance", "Date", "Status");
-    printf("%-5s %-15s %-18s %-25s %-12s %-12s %-12s %-10s\n",
-           "----", "-----------", "------------------", "-------------------------",
-           "------------", "------------", "------------", "----------");
-    for (i = 0; i < num_of_accounts; i++)
+    FILE *f = fopen(search, "r");
+    if (f != NULL)
     {
-        printf("%-5d %-15s %-18s %-25s %-12s %-12.2f %02d/%d     %-10s\n",
-               i + 1,
-               acc[i].number,
-               acc[i].name,
-               acc[i].email,
-               acc[i].mobile,
-               acc[i].balance,
-               acc[i].date_opened.month,
-               acc[i].date_opened.year,
-               acc[i].status);
+        i = 0;
+        fseek(f, 33, SEEK_SET);
+        while (fgets(output, sizeof(output), f) != NULL && i++ < 5)
+            ;
+        printf("\n========= LAST %d TRANSACTIONS SUMMARY =========", i);
+        i = 0;
+        fseek(f, 33, SEEK_SET);
+        while (fgets(output, sizeof(output), f) != NULL && i++ < 5)
+            printf("\n%s", output);
+        fclose(f);
+        GO_TO_MENU();
     }
-    GO_TO_MENU();
-    return;
 }
-void sortByName()
+void sortByDate()
 {
     int i, j;
     Account t;
@@ -1848,9 +2012,13 @@ void sortByName()
 
     do
     {
-        printf("Do you want to sort alphabetically Ascending or Descending? Please Enter (Ascending/Descending) to choose: ");
+        printf("Do you want to sort by Ascending or Descending date ? Please Enter (Ascending/Descending) to choose: ");
         fgets(input, sizeof(input), stdin);
         input[strcspn(input, "\n")] = '\0';
+        if (!validateOverflow(input))
+        {
+            continue;
+        }
         for (int k = 0; k < strlen(input); k++)
         {
             input[k] = tolower(input[k]);
@@ -1875,11 +2043,20 @@ void sortByName()
         {
             for (j = 0; j < num_of_accounts - i - 1; j++)
             {
-                if (strcmp(acc[j].name, acc[j + 1].name) > 0)
+                if (temp[j].date_opened.year > temp[j + 1].date_opened.year)
                 {
-                    t = acc[j];
-                    acc[j] = acc[j + 1];
-                    acc[j + 1] = t;
+                    t = temp[j];
+                    temp[j] = temp[j + 1];
+                    temp[j + 1] = t;
+                }
+                else if (temp[j].date_opened.year == temp[j + 1].date_opened.year)
+                {
+                    if (temp[j].date_opened.month > temp[j + 1].date_opened.month)
+                    {
+                        t = temp[j];
+                        temp[j] = temp[j + 1];
+                        temp[j + 1] = t;
+                    }
                 }
             }
         }
@@ -1890,11 +2067,106 @@ void sortByName()
         {
             for (j = 0; j < num_of_accounts - i - 1; j++)
             {
-                if (strcmp(acc[j].name, acc[j + 1].name) < 0)
+                if (temp[j].date_opened.year < temp[j + 1].date_opened.year)
                 {
-                    t = acc[j];
-                    acc[j] = acc[j + 1];
-                    acc[j + 1] = t;
+                    t = temp[j];
+                    temp[j] = temp[j + 1];
+                    temp[j + 1] = t;
+                }
+                else if (temp[j].date_opened.year == temp[j + 1].date_opened.year)
+                {
+                    if (temp[j].date_opened.month > temp[j + 1].date_opened.month)
+                    {
+                        t = temp[j];
+                        temp[j] = temp[j + 1];
+                        temp[j + 1] = t;
+                    }
+                }
+            }
+        }
+    }
+    printf("\nAccounts sorted by date opened (%s):-\n", n ? "Oldest to Newest" : "Newest to Oldest");
+    printf("\n%-5s %-15s %-18s %-25s %-12s %-12s %-12s %-10s\n",
+           "No.", "Account No.", "Name", "Email", "Mobile", "Balance", "Date", "Status");
+    printf("%-5s %-15s %-18s %-25s %-12s %-12s %-12s %-10s\n",
+           "----", "-----------", "------------------", "-------------------------",
+           "------------", "------------", "------------", "----------");
+    for (i = 0; i < num_of_accounts; i++)
+    {
+        printf("%-5d %-15s %-18s %-25s %-12s %-12.2f %02d/%d     %-10s\n",
+               i + 1,
+               temp[i].number,
+               temp[i].name,
+               temp[i].email,
+               temp[i].mobile,
+               temp[i].balance,
+               temp[i].date_opened.month,
+               temp[i].date_opened.year,
+               temp[i].status);
+    }
+    GO_TO_MENU();
+    return;
+}
+void sortByName()
+{
+    int i, j;
+    Account t;
+    char input[100];
+    int n = -1;
+
+    do
+    {
+        printf("Do you want to sort alphabetically Ascending or Descending? Please Enter (Ascending/Descending) to choose: ");
+        fgets(input, sizeof(input), stdin);
+        input[strcspn(input, "\n")] = '\0';
+        if (!validateOverflow(input))
+        {
+            continue;
+        }
+        for (int k = 0; k < strlen(input); k++)
+        {
+            input[k] = tolower(input[k]);
+        }
+        if (strcmp(input, "ascending") == 0)
+        {
+            n = 1;
+        }
+        else if (strcmp(input, "descending") == 0)
+        {
+            n = 0;
+        }
+        else
+        {
+            printf("Please enter either 'Ascending' or 'Descending'.\n");
+        }
+    } while (n == -1);
+
+    if (n == 1)
+    {
+        for (i = 0; i < num_of_accounts - 1; i++)
+        {
+            for (j = 0; j < num_of_accounts - i - 1; j++)
+            {
+                if (strcmp(temp[j].name, temp[j + 1].name) > 0)
+                {
+                    t = temp[j];
+                    temp[j] = temp[j + 1];
+                    temp[j + 1] = t;
+                }
+            }
+        }
+    }
+    else if (n == 0)
+    {
+        for (i = 0; i < num_of_accounts - 1; i++)
+        {
+            for (j = 0; j < num_of_accounts - i - 1; j++)
+            {
+                if (strcmp(temp[j].name, temp[j + 1].name) < 0)
+                {
+                    t = temp[j];
+                    temp[j] = temp[j + 1];
+                    temp[j + 1] = t;
                 }
             }
         }
@@ -1911,14 +2183,14 @@ void sortByName()
     {
         printf("%-5d %-15s %-20s %-30s %-12s %-15.2f %02d/%d     %-10s\n",
                i + 1,
-               acc[i].number,
-               acc[i].name,
-               acc[i].email,
-               acc[i].mobile,
-               acc[i].balance,
-               acc[i].date_opened.month,
-               acc[i].date_opened.year,
-               acc[i].status);
+               temp[i].number,
+               temp[i].name,
+               temp[i].email,
+               temp[i].mobile,
+               temp[i].balance,
+               temp[i].date_opened.month,
+               temp[i].date_opened.year,
+               temp[i].status);
     }
 
     GO_TO_MENU();
@@ -1936,6 +2208,10 @@ void sortByBalance()
         printf("Do you want to sort by Ascending or Descending balance ? Please Enter (Ascending/Descending) to choose: ");
         fgets(input, sizeof(input), stdin);
         input[strcspn(input, "\n")] = '\0';
+        if (!validateOverflow(input))
+        {
+            continue;
+        }
         for (int i = 0; i < strlen(input); i++)
         {
             input[i] = tolower(input[i]);
@@ -1961,11 +2237,11 @@ void sortByBalance()
         {
             for (j = 0; j < num_of_accounts - i - 1; j++)
             {
-                if (acc[j].balance > acc[j + 1].balance)
+                if (temp[j].balance > temp[j + 1].balance)
                 {
-                    t = acc[j];
-                    acc[j] = acc[j + 1];
-                    acc[j + 1] = t;
+                    t = temp[j];
+                    temp[j] = temp[j + 1];
+                    temp[j + 1] = t;
                 }
             }
         }
@@ -1976,11 +2252,11 @@ void sortByBalance()
         {
             for (j = 0; j < num_of_accounts - i - 1; j++)
             {
-                if (acc[j].balance < acc[j + 1].balance)
+                if (temp[j].balance < temp[j + 1].balance)
                 {
-                    t = acc[j];
-                    acc[j] = acc[j + 1];
-                    acc[j + 1] = t;
+                    t = temp[j];
+                    temp[j] = temp[j + 1];
+                    temp[j + 1] = t;
                 }
             }
         }
@@ -1996,14 +2272,14 @@ void sortByBalance()
     {
         printf("%-5d %-15s %-20s %-30s %-12s %-15.2f %02d/%d     %-10s\n",
                i + 1,
-               acc[i].number,
-               acc[i].name,
-               acc[i].email,
-               acc[i].mobile,
-               acc[i].balance,
-               acc[i].date_opened.month,
-               acc[i].date_opened.year,
-               acc[i].status);
+               temp[i].number,
+               temp[i].name,
+               temp[i].email,
+               temp[i].mobile,
+               temp[i].balance,
+               temp[i].date_opened.month,
+               temp[i].date_opened.year,
+               temp[i].status);
     }
 
     GO_TO_MENU();
@@ -2021,6 +2297,10 @@ void sortByStatus()
         printf("Do you want active or inactive accounts on the top of the list? (Active/Inactive): ");
         fgets(input, sizeof(input), stdin);
         input[strcspn(input, "\n")] = '\0';
+        if (!validateOverflow(input))
+        {
+            continue;
+        }
         for (int i = 0; i < strlen(input); i++)
         {
             input[i] = tolower(input[i]);
@@ -2045,13 +2325,13 @@ void sortByStatus()
         {
             for (j = 0; j < num_of_accounts - 1; j++)
             {
-                int active1 = strcmp(acc[j].status, " active") == 0;
-                int active2 = strcmp(acc[j + 1].status, " active") == 0;
+                int active1 = strcmp(temp[j].status, " active") == 0;
+                int active2 = strcmp(temp[j + 1].status, " active") == 0;
                 if (active2)
                 {
-                    Account temp = acc[j];
-                    acc[j] = acc[j + 1];
-                    acc[j + 1] = temp;
+                    Account x = temp[j];
+                    temp[j] = temp[j + 1];
+                    temp[j + 1] = x;
                 }
             }
         }
@@ -2063,13 +2343,13 @@ void sortByStatus()
         {
             for (j = 0; j < num_of_accounts - 1; j++)
             {
-                int active1 = strcmp(acc[j].status, " active") == 0;
-                int active2 = strcmp(acc[j + 1].status, " active") == 0;
+                int active1 = strcmp(temp[j].status, " active") == 0;
+                int active2 = strcmp(temp[j + 1].status, " active") == 0;
                 if (!active2)
                 {
-                    Account temp = acc[j];
-                    acc[j] = acc[j + 1];
-                    acc[j + 1] = temp;
+                    Account x = temp[j];
+                    temp[j] = temp[j + 1];
+                    temp[j + 1] = x;
                 }
             }
         }
@@ -2081,6 +2361,30 @@ void sortByStatus()
            "----", "-----------", "--------------------", "------------------------------",
            "------------", "---------------", "------------", "----------");
     for (i = 0; i < num_of_accounts; i++)
+    {
+        printf("%-5d %-15s %-20s %-30s %-12s %-15.2f %02d/%d     %-10s\n",
+               i + 1,
+               temp[i].number,
+               temp[i].name,
+               temp[i].email,
+               temp[i].mobile,
+               temp[i].balance,
+               temp[i].date_opened.month,
+               temp[i].date_opened.year,
+               temp[i].status);
+    }
+    GO_TO_MENU();
+    return;
+}
+void PRINT_Unsorted()
+{
+    printf("\nAccounts:-\n");
+    printf("\n%-5s %-15s %-20s %-30s %-12s %-15s %-12s %-10s\n",
+           "No.", "Account No.", "Name", "Email", "Mobile", "Balance", "Date Created", "Status");
+    printf("%-5s %-15s %-20s %-30s %-12s %-15s %-12s %-10s\n",
+           "----", "-----------", "--------------------", "------------------------------",
+           "------------", "---------------", "------------", "----------");
+    for (int i = 0; i < num_of_accounts; i++)
     {
         printf("%-5d %-15s %-20s %-30s %-12s %-15.2f %02d/%d     %-10s\n",
                i + 1,
@@ -2106,9 +2410,14 @@ void PRINT_SORT()
         printf("2) Balance\n");
         printf("3) Date opened\n");
         printf("4) Status\n");
-        printf("Enter your choice (1-4) (-1 to return to menu): ");
+        printf("5) Unsorted\n");
+        printf("Enter your choice (1-5) (-1 to return to menu): ");
         fgets(input, sizeof(input), stdin);
         input[strcspn(input, "\n")] = '\0';
+        if (!validateOverflow(input))
+        {
+            continue;
+        }
 
         if (!strcmp(input, "-1"))
         {
@@ -2139,9 +2448,15 @@ void PRINT_SORT()
         break;
     }
     case 4:
+    {
         sortByStatus();
         break;
-
+    }
+    case 5:
+    {
+        PRINT_Unsorted();
+        break;
+    }
     default:
         break;
     }
@@ -2160,7 +2475,6 @@ int SAVE()
             {
                 printf("Error: couldn't create file");
                 exit(1);
-                // check for the file
             }
             printf("Saving changes...\n");
             change = 0;
@@ -2169,14 +2483,14 @@ int SAVE()
                 fprintf(f, "%s,%s,%s,%lf,", acc[i].number, acc[i].name, acc[i].email, acc[i].balance);
                 fprintf(f, "%s,%d-%d,%s\n", acc[i].mobile, acc[i].date_opened.month, acc[i].date_opened.year, acc[i].status);
             }
-            printf("Changes saved successfully!\n"); // write the new info in the file
+            printf("Changes saved successfully!\n");
             fclose(f);
             return 0;
         }
         else if (x == 0)
         {
-            REVOKE_REPORTS();
             LOAD();
+            REVOKE_REPORTS();
             printf("No changes were saved.\n");
             return 0;
         }
@@ -2212,6 +2526,10 @@ void DELETE_MULTIPLE()
         printf("Enter your choice (1-2) (-1 to return to menu): ");
         fgets(input, sizeof(input), stdin);
         input[strcspn(input, "\n")] = '\0';
+        if (!validateOverflow(input))
+        {
+            continue;
+        }
 
         if (!strcmp(input, "-1"))
         {
@@ -2234,6 +2552,10 @@ void DELETE_MULTIPLE()
             printf("Enter month (1-12) (-1 to return to menu): ");
             fgets(input, sizeof(input), stdin);
             input[strcspn(input, "\n")] = '\0';
+            if (!validateOverflow(input))
+            {
+                continue;
+            }
 
             if (!strcmp(input, "-1"))
             {
@@ -2252,6 +2574,10 @@ void DELETE_MULTIPLE()
             printf("Enter year (-1 to return to menu): ");
             fgets(input, sizeof(input), stdin);
             input[strcspn(input, "\n")] = '\0';
+            if (!validateOverflow(input))
+            {
+                continue;
+            }
 
             if (!strcmp(input, "-1"))
             {
